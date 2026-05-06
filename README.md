@@ -123,9 +123,34 @@ SIGN_SECRET = "8a1317a7468aa3ad86e997d08f3f31cb"
 
 # 管理接口保护密钥，部署前务必修改为随机强密码
 ADMIN_KEY = "your-random-strong-password"
+
+# 可选：直接填写从 app.fireworks.ai /playground 页面提取到的 internal_ key
+# FIREWORKS_INTERNAL_API_KEY = "internal_xxx"
+
+# 可选：填写 app.fireworks.ai 的 session JSON，用于自动刷新并提取 internal key
+# FIREWORKS_SESSION_JSON = "{\"accessToken\":\"...\",\"refreshToken\":\"...\",\"idToken\":\"...\",\"email\":\"...\",\"sub\":\"...\",\"accountID\":\"...\",\"hasAccount\":true,\"accountState\":2}"
 ```
 
 > **安全提示**：`ADMIN_KEY` 用于保护 `/admin/token` 接口。若留空或未设置，任何人都能修改 Token 映射，生产环境务必设置强密码。
+
+### 可选：启用 Fireworks Playground 转发
+
+如果你想把这套 Worker 直接接到 `app.fireworks.ai` 的 Playground 流程，目前已集成一个最小可用分支：
+
+- 触发条件：`/v1/chat/completions`
+- 模型名：`accounts/fireworks/models/...`
+- 当前已在 `/v1/models` 中暴露示例模型：`accounts/fireworks/models/glm-5p1`
+
+有两种接法，二选一：
+
+1. **直接配置 `FIREWORKS_INTERNAL_API_KEY`**
+   - 适合已经从页面 Flight/HTML 中拿到 `internal_...` key 的场景
+2. **配置 `FIREWORKS_SESSION_JSON`**
+   - Worker 会先调用 `https://app.fireworks.ai/api/v2/auth/refresh`
+   - 然后访问 `/playground?category=llm&model=...`
+   - 自动从返回的 HTML / Flight 数据里提取内部 key，再转发到 `api.fireworks.ai`
+
+> 说明：当前 Fireworks 集成只接入了 OpenAI 兼容的聊天接口 `/v1/chat/completions`，不会影响原有 GLM/Claude/Gemini 分支。
 
 ### 第三步：部署
 
@@ -257,6 +282,25 @@ Worker 会依次尝试每个 key，使用第一个通过认证的账号发起请
 ---
 
 ## API 使用指南
+
+### Fireworks Playground 分支（OpenAI 兼容）
+
+当 `model` 以 `accounts/fireworks/models/` 开头时，请求会自动走 Fireworks 分支：
+
+```bash
+curl -X POST https://<your-worker-domain>/v1/chat/completions \
+  -H "Authorization: Bearer <your-api-key>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "accounts/fireworks/models/glm-5p1",
+    "stream": true,
+    "messages": [
+      { "role": "user", "content": "你好" }
+    ]
+  }'
+```
+
+只要 Worker 端已配置 `FIREWORKS_INTERNAL_API_KEY` 或 `FIREWORKS_SESSION_JSON`，即可直接转发。
 
 ### OpenAI 兼容接口
 

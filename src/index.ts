@@ -15,17 +15,34 @@ import {
   isString,
   unixTimestamp,
 } from "./utils.ts";
+import {
+  createFireworksCompletionResponse,
+  hasFireworksConfig,
+  isFireworksModel,
+} from "./fireworks.ts";
 import { WELCOME_HTML } from "./welcome.ts";
 import { getAdminPanelHTML } from "./admin-panel.ts";
 
 export interface Env {
   SIGN_SECRET?: string;
   ADMIN_KEY?: string;
+  FIREWORKS_INTERNAL_API_KEY?: string;
+  FIREWORKS_SESSION_JSON?: string;
   GLM_TOKENS: KVNamespace;
 }
 
 const SUPPORTED_MODELS = [
   { id: "glm5", name: "GLM-5", object: "model", owned_by: "glm-free-api", description: "GLM-5 通用对话模型" },
+];
+
+const FIREWORKS_SUPPORTED_MODELS = [
+  {
+    id: "accounts/fireworks/models/glm-5p1",
+    name: "Fireworks / GLM-5.1",
+    object: "model",
+    owned_by: "fireworks-playground",
+    description: "通过 Fireworks Playground 内部 key 转发的 GLM-5.1",
+  },
 ];
 
 const GEMINI_MODELS = [
@@ -74,7 +91,7 @@ function selectTokenFromPool(tokens: { id: string; token: string }[]): string | 
   return tokens[idx].token;
 }
 
-async function authenticate(request: Request, env: Env): Promise<string> {
+async function ensureAuthorized(request: Request, env: Env): Promise<void> {
   const apiKeys = extractAPIKeys(request);
   if (apiKeys.length === 0) throw new Error("Missing Authorization header");
 
@@ -86,13 +103,20 @@ async function authenticate(request: Request, env: Env): Promise<string> {
     }
   }
   if (!validKey) throw new Error("Invalid API key");
+}
 
+async function selectRefreshToken(env: Env): Promise<string> {
   const pool = await getTokenPool(env.GLM_TOKENS);
   if (pool.length === 0) throw new Error("No refresh tokens available in pool");
 
   const token = selectTokenFromPool(pool);
   if (!token) throw new Error("Failed to select token from pool");
   return token;
+}
+
+async function authenticate(request: Request, env: Env): Promise<string> {
+  await ensureAuthorized(request, env);
+  return selectRefreshToken(env);
 }
 
 function jsonResponse(data: any, status = 200): Response {
@@ -117,13 +141,30 @@ function sseResponse(stream: ReadableStream): Response {
   });
 }
 
+function proxyResponse(response: Response): Response {
+  const headers = new Headers(response.headers);
+  Object.entries(corsHeaders()).forEach(([key, value]) => headers.set(key, value));
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 // ==================== Handlers ====================
 
 async function handleChatCompletions(request: Request, env: Env): Promise<Response> {
-  const refreshToken = await authenticate(request, env);
   const body = (await request.json()) as any;
 
   if (!Array.isArray(body.messages)) throw new Error("messages must be an array");
+
+  if (isFireworksModel(body.model)) {
+    await ensureAuthorized(request, env);
+    const response = await createFireworksCompletionResponse(body, env);
+    return proxyResponse(response);
+  }
+
+  const refreshToken = await authenticate(request, env);
 
   const { model, conversation_id: convId, messages, stream, tools, tool_choice } = body;
   if (stream) {
@@ -241,8 +282,12 @@ async function handleVideoGenerations(request: Request, env: Env): Promise<Respo
   return jsonResponse({ created: unixTimestamp(), data });
 }
 
-async function handleModels(): Promise<Response> {
-  return jsonResponse({ data: SUPPORTED_MODELS });
+async function handleModels(env: Env): Promise<Response> {
+  const models = [...SUPPORTED_MODELS];
+  if (hasFireworksConfig(env)) {
+    models.push(...FIREWORKS_SUPPORTED_MODELS);
+  }
+  return jsonResponse({ data: models });
 }
 
 async function handleTokenCheck(request: Request, env: Env): Promise<Response> {
@@ -373,7 +418,7 @@ export default {
       } else if (path === "/v1/videos/generations" && request.method === "POST") {
         response = await handleVideoGenerations(request, env);
       } else if (path === "/v1/models" && request.method === "GET") {
-        response = await handleModels();
+        response = await handleModels(env);
       } else if (path === "/ping" && request.method === "GET") {
         response = new Response("pong", { headers: corsHeaders() });
       } else if (path === "/token/check" && request.method === "POST") {
