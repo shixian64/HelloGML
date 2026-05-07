@@ -18,8 +18,10 @@ ADMIN_KEY = "changeme"
 # FIREWORKS_SESSION_JSON = "{\"accessToken\":\"...\",\"refreshToken\":\"...\",\"idToken\":\"...\",\"email\":\"...\",\"sub\":\"...\",\"accountID\":\"...\",\"hasAccount\":true,\"accountState\":2}"
 
 # KV Namespace 绑定，用于存储 api_key -> refresh_token 映射
-# 首次部署前需执行：npx wrangler kv:namespace create "GLM_TOKENS"
+# 首次部署前可执行：npx wrangler kv namespace create GLM_TOKENS --update-config
 # 然后将输出的 id 填入下方
 [[kv_namespaces]]
 binding = "GLM_TOKENS"
-id = ""  # <-- 替换为你创建 KV 后得到的 id
+# 注意：wrangler dev --local 也要求这里是非空字符串
+# 本地开发可先用占位值；正式部署前请替换成真实 Cloudflare KV namespace id
+id = "local-dev-glm-tokens"

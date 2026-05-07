@@ -94,6 +94,8 @@ npx wrangler dev --local
 
 本地服务默认运行在 `http://localhost:8787`。
 
+> 注意：即使是 `--local`，Wrangler 也要求 `wrangler.toml` 里的 `kv_namespaces[].id` 为非空字符串。本仓库默认使用本地占位值；部署前请替换成真实 namespace id。
+
 ---
 
 ## 部署指南
@@ -101,7 +103,7 @@ npx wrangler dev --local
 ### 第一步：创建 KV Namespace
 
 ```bash
-npx wrangler kv:namespace create GLM_TOKENS
+npx wrangler kv namespace create GLM_TOKENS --update-config
 ```
 
 命令会输出如下内容，将 `id` 填入 `wrangler.toml`：
