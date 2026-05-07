@@ -139,7 +139,7 @@ ADMIN_KEY = "your-random-strong-password"
 
 - 触发条件：`/v1/chat/completions`
 - 模型名：`accounts/fireworks/models/...`
-- 当前已在 `/v1/models` 中暴露示例模型：`accounts/fireworks/models/glm-5p1`
+- 当前已在 `/v1/models` 中暴露 29 个 Fireworks Playground 模型
 
 有两种接法，二选一：
 
